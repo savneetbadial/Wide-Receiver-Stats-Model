@@ -1,0 +1,78 @@
+import pandas as pd
+import numpy as np
+import keras
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+
+# Path to the CSV on your computer (relative to the notebook, or an absolute path)
+file_path = 'wr_games_raw.csv'
+
+df = pd.read_csv(file_path)
+print(f"Successfully loaded {len(df):,} rows!")
+
+# Data preparation
+features = [
+    'home', 'targets_avg3', 'rec_avg3', 'yds_avg3', 'td_avg3',
+    'targets_avg8', 'rec_avg8', 'yds_avg8', 'yac_avg8',
+    'team_pass_att_avg3', 'opp_wr_yds_allowed_avg5', 'opp_pass_def_rank',
+    'games_played_career'
+]
+target = 'receiving_yards'
+
+X = df[features].fillna(0).values
+y = df[target].values
+
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+
+scaler = StandardScaler()
+X_train = scaler.fit_transform(X_train)
+X_val = scaler.transform(X_val)
+
+# Model architecture
+model = keras.Sequential([
+    keras.layers.Input(shape=(X_train.shape[1],), name='input_features'),
+    keras.layers.Dense(128, activation='relu', name='hidden_layer_1'),
+    keras.layers.Dense(64, activation='relu', name='hidden_layer_2'),
+    keras.layers.Dense(32, activation='relu', name='hidden_layer_3'),
+    keras.layers.Dense(1, name='output_receiving_yards')
+])
+
+model.compile(
+    optimizer=keras.optimizers.Adam(learning_rate=0.001),
+    loss='mean_squared_error',
+    metrics=['mae']
+)
+
+model.summary()
+
+# Training
+history = model.fit(
+    X_train, y_train,
+    validation_data=(X_val, y_val),
+    epochs=30,
+    batch_size=256
+)
+
+# Evaluation: regression metrics
+val_loss, val_mae = model.evaluate(X_val, y_val, verbose=0)
+print(f"Validation Loss (MSE): {val_loss:.2f}")
+print(f"Validation MAE: {val_mae:.2f} receiving yards")
+
+# Evaluation: breakout game classification (>= 70 receiving yards)
+y_val_preds = model.predict(X_val, verbose=0).flatten()
+breakout_threshold = 70.0
+y_true_binary = (y_val >= breakout_threshold).astype(int)
+y_pred_binary = (y_val_preds >= breakout_threshold).astype(int)
+
+print(f"Accuracy:  {accuracy_score(y_true_binary, y_pred_binary) * 100:.2f}%")
+print(f"Precision: {precision_score(y_true_binary, y_pred_binary, zero_division=0):.4f}")
+print(f"Recall:    {recall_score(y_true_binary, y_pred_binary, zero_division=0):.4f}")
+print(f"F1-Score:  {f1_score(y_true_binary, y_pred_binary, zero_division=0):.4f}")
+
+# Validation Loss (MSE): 1069.49
+# Validation MAE: 24.14 receiving yards
+# Accuracy:  79.71%
+# Precision: 0.5090
+# Recall:    0.2463
+# F1-Score:  0.3320
